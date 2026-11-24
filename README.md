@@ -4,6 +4,8 @@ A small web app that answers staff questions about a company leave policy.
 You can type or speak, in English or Bangla. Every answer names the policy
 section it comes from and shows that section's own words.
 
+- **Case study:** https://asifmyself.xyz/case-studies/leave-policy-assistant
+
 The policy in this repository is a sample for a made-up company,
 Northfield Trading Ltd (HR-POL-001, version 1.0). See [`policy/policy.md`](policy/policy.md).
 

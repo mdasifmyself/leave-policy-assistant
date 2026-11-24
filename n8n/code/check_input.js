@@ -14,7 +14,7 @@ const RECORD = '(leave|leaves|balance|sick|medical|health|absen\\w*|taken|used|o
 const strong = [
   new RegExp('\\b(colleague|co-?worker|teammate|team mate|another employee|other employee)s?\\b[\\s\\S]*' + RECORD, 'i'),
   new RegExp('\\b[A-Z][a-z]+\'s\\s+' + RECORD, ''),
-  /\bhow (many|much)\b[\s\S]*\b(has|did|have)\s+(?!I\b|you\b|we\b)[A-Z][a-z]+\s+(take|taken|use|used|had)\b/,
+  /\b[Hh]ow (many|much)\b[\s\S]*\b(has|did|have)\s+(?!I\b|you\b|we\b)[A-Z][a-z]+\s+(take|taken|use|used|had)\b/,
   /\bwhy (is|was)\s+(?!I\b)([A-Z][a-z]+|my colleague|my co-?worker|he|she)\s+(on|absent|off|sick)\b/i,
   /(সহকর্মী|অন্য কর্মী)[\s\S]*(ছুটি|অসুস্থ|মেডিক্যাল|কারণ)/,
 ];
