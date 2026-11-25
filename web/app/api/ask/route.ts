@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     });
     const data = await r.json();
     if (!r.ok || !data.ok || !Array.isArray(data.parts)) {
-      const msg = data?.error === "bad_input" ? data.message : "The answer service is busy for a moment. Please try again.";
+      const msg = (data?.error === "bad_input" || data?.error === "daily_limit") && data.message ? data.message : "The answer service is busy for a moment. Please try again.";
       return json({ ok: false, error: data?.error || "temporary", message: msg }, r.status === 400 ? 400 : 503);
     }
     // Both languages come back, so the reader can switch languages at any time.

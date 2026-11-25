@@ -40,6 +40,10 @@ N8N_URL = setting("n8n_url").rstrip("/")
 N8N_KEY = setting("n8n_api_key")
 _cred = json.loads(setting("openai_credential.json"))
 OPENAI_CRED = {"id": _cred["id"], "name": _cred["name"]}
+AI_DAILY_LIMIT = setting("policy_ai_daily_limit", "200")      # questions a day; over it, no AI call is made
+# Optional: the id of a separate alerts workflow (it sends the team a Telegram message when something breaks).
+_alerts = CFG / "alerts_workflow.json"
+ALERTS = json.loads(_alerts.read_text())["id"] if _alerts.exists() else None
 NAME_MAIN = "Policy Assistant | Answer Engine"
 NAME_STORE = "Policy Assistant | Policy Store"
 WEBHOOK_PATH = "policy-assistant/ask"
@@ -130,6 +134,9 @@ def sticky(n, title, body, pos, w, h, color=None):
     return node
 
 
+LIMIT_BODY = json.dumps({"ok": False, "error": "daily_limit",
+                         "message": "This public test space has answered its limit of questions for today. "
+                                    "Please come back tomorrow."})
 ERROR_BODY = json.dumps({"ok": False, "error": "temporary",
                          "message": "The answer service is busy for a moment. Please try again."})
 
@@ -156,6 +163,9 @@ def build_main(store_id, hook_cred, clauses):
                         "mode": "once", "options": {"waitForSubWorkflow": True}}},
         code("Build request", "build_request.js", [880, Y],
              SYSTEM_PROMPT=json.dumps(prompt), MODEL=json.dumps(MODEL), EFFORT=json.dumps(EFFORT)),
+        code("Daily AI limit", "daily_limit.js", [880, Y + 440], LIMIT=AI_DAILY_LIMIT),
+        if_node("Under the limit?", "={{ $json.ai_ok }}", [1100, Y + 440]),
+        respond("Reply: daily limit", "={{ " + json.dumps(LIMIT_BODY) + " }}", 503, [1320, Y + 540]),
         openai("Ask OpenAI", [1100, Y]),
         code("Check answer", "validate.js", [1320, Y], ATTEMPT="1"),
         if_node("Passed?", "={{ $json.valid }}", [1540, Y]),
@@ -170,6 +180,17 @@ def build_main(store_id, hook_cred, clauses):
                 "{ debug: $json.errors || $json.error || null, model_output: $json.model_output || null } : {})) }}",
                 503, [2640, Y + 420]),
     ]
+    if ALERTS:
+        nodes += [
+            code("Why no AI?", "no_ai_notice.js", [1320, Y + 720], LIMIT=AI_DAILY_LIMIT),
+            {"id": str(uuid.uuid4()), "name": "Tell the team", "type": "n8n-nodes-base.executeWorkflow",
+             "typeVersion": 1.2, "position": [1540, Y + 720], "onError": "continueRegularOutput",
+             "parameters": {"workflowId": {"__rl": True, "value": ALERTS, "mode": "id"},
+                            "workflowInputs": {"mappingMode": "defineBelow", "value": {}, "matchingColumns": [],
+                                               "schema": [], "attemptToConvertTypes": False,
+                                               "convertFieldsToString": True},
+                            "mode": "once", "options": {"waitForSubWorkflow": False}}},
+        ]
     notes = [
         sticky(1, "1 · Receive the question",
                "**In:** `question`, `lang` (en / bn) from the website's server.\n"
@@ -192,6 +213,10 @@ def build_main(store_id, hook_cred, clauses):
                "section and cannot miss one.\nStrict JSON schema: each part is `answer`, `unknown`, "
                "`privacy` or `greeting`, with section + exact quote.",
                [840, -40], 420, 300),
+        sticky(8, "A daily ceiling",
+               f"At most {AI_DAILY_LIMIT} questions a day reach the AI. After that the visitor gets an honest "
+               "\"come back tomorrow\" reply, so a public test space cannot run up a bill.",
+               [840, 900], 420, 160),
         sticky(5, "5 · Ask OpenAI",
                f"Responses API, model `{MODEL}`, `store: false`.\n**Fails:** timeout / outage → "
                "honest \"temporary error\", never \"I don't know\" (a technical failure is not a policy answer).",
@@ -209,23 +234,30 @@ def build_main(store_id, hook_cred, clauses):
                [1720, 520], 980, 220),
     ]
     c = lambda *targets: {"main": [[{"node": t, "type": "main", "index": 0} for t in ts] for ts in targets]}
+    notice = ["Why no AI?"] if ALERTS else []
     connections = {
         "Webhook": c(["Check input"]),
         "Check input": c(["Input OK?"]),
         "Input OK?": c(["Load policy"], ["Reply: bad input"]),
         "Load policy": c(["Build request"]),
-        "Build request": c(["Ask OpenAI"]),
-        "Ask OpenAI": c(["Check answer"], ["Reply: temporary error"]),
+        "Build request": c(["Daily AI limit"]),
+        "Daily AI limit": c(["Under the limit?"]),
+        "Under the limit?": c(["Ask OpenAI"], ["Reply: daily limit"] + notice),
+        "Ask OpenAI": c(["Check answer"], ["Reply: temporary error"] + notice),
         "Check answer": c(["Passed?"]),
         "Passed?": c(["Reply: answer"], ["Build retry"]),
         "Build retry": c(["Ask OpenAI again"]),
-        "Ask OpenAI again": c(["Check answer again"], ["Reply: temporary error"]),
+        "Ask OpenAI again": c(["Check answer again"], ["Reply: temporary error"] + notice),
         "Check answer again": c(["Passed now?"]),
         "Passed now?": c(["Reply: answer (retry)"], ["Reply: temporary error"]),
     }
-    return {"name": NAME_MAIN, "nodes": notes + nodes, "connections": connections,
-            "settings": {"executionOrder": "v1", "saveDataSuccessExecution": "none",
-                         "saveDataErrorExecution": "all", "saveManualExecutions": False, "executionTimeout": 120}}
+    if ALERTS:
+        connections["Why no AI?"] = c(["Tell the team"])
+    settings = {"executionOrder": "v1", "saveDataSuccessExecution": "none", "saveDataErrorExecution": "all",
+                "saveManualExecutions": False, "executionTimeout": 120}
+    if ALERTS:
+        settings["errorWorkflow"] = ALERTS      # a crashed run tells the team (workflow, step, error line only)
+    return {"name": NAME_MAIN, "nodes": notes + nodes, "connections": connections, "settings": settings}
 
 
 def build_store(policy):
@@ -266,7 +298,9 @@ def clean_export(main):
             for k in n["credentials"]:
                 n["credentials"][k] = {"id": "REPLACE_ME", "name": f"<your {k} credential>"}
         if n["type"] == "n8n-nodes-base.executeWorkflow":
-            n["parameters"]["workflowId"]["value"] = "REPLACE_WITH_POLICY_STORE_WORKFLOW_ID"
+            n["parameters"]["workflowId"]["value"] = ("REPLACE_WITH_ALERTS_WORKFLOW_ID" if n["name"] == "Tell the team"
+                                                      else "REPLACE_WITH_POLICY_STORE_WORKFLOW_ID")
+    wf["settings"].pop("errorWorkflow", None)
     return wf
 
 

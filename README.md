@@ -82,7 +82,9 @@ Names only. Real values go in Vercel's environment settings, or in
 `n8n/build.py` reads its own settings from `~/.config/asif-demos/`:
 `n8n_url`, `n8n_api_key`, `openai_credential.json` (the id and name of the
 OpenAI credential saved in n8n), `policy_webhook_secret` (made on the first run
-if missing), and optionally `openai_model` and `openai_effort`.
+if missing), and optionally `openai_model`, `openai_effort`,
+`policy_ai_daily_limit` (default 200) and `alerts_workflow.json` (the id of a
+separate n8n workflow that sends alerts).
 
 ## Build the workflows
 
@@ -141,8 +143,12 @@ Edit `policy/policy_sections.json` (one entry per clause: `id`, `heading`,
   system, so it cannot answer "how many days do I have left?".
 - It reads one document. Other company policies are outside its scope.
 - Rate limits are counted in memory on each server instance (per visitor:
-  12 questions a minute and 300 a day; voice has its own limits). The hard
+  12 questions a minute and 300 a day; voice has its own limits).
+- The workflow itself stops at 200 AI questions a day (all visitors together).
+  After that it replies "come back tomorrow" and makes no AI call. The last
   safety net is a spending cap at each provider.
+- A crashed run, an OpenAI error or a reached daily limit can send the team a
+  short message (the reason only, never the question).
 - No chat history is kept. OpenAI processes the text and ElevenLabs the voice.
 - The site asks search engines not to index it.
 
