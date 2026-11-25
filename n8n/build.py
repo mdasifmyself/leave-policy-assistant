@@ -34,7 +34,7 @@ def setting(name, default=None):
     return default
 
 
-MODEL = setting("openai_model", "gpt-6-luna")
+MODEL = setting("openai_model", "gpt-4.1-mini")
 EFFORT = setting("openai_effort", "low")
 N8N_URL = setting("n8n_url").rstrip("/")
 N8N_KEY = setting("n8n_api_key")

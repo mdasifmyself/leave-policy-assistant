@@ -45,7 +45,8 @@ const body = {
   model: MODEL,
   input: messages,
   store: false,
-  reasoning: { effort: __EFFORT__ },
+  // Reasoning models (gpt-5 and later, o-series) take an effort setting; others reject it and get a fixed temperature.
+  ...(/^(gpt-[5-9]|o\d)/.test(MODEL) ? { reasoning: { effort: __EFFORT__ } } : { temperature: 0 }),
   text: { format: { type: 'json_schema', name: 'policy_answer', strict: true, schema } },
 };
 

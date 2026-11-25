@@ -120,7 +120,8 @@ parts.forEach((p, i) => {
       citations: leave ? PRIVACY_SECTIONS.filter(id => byId[id]).map(id => ({ ...cite(id), quote: byId[id].text })) : [],
     });
   } else if (p.status === 'answer') {
-    const ans = String(p.answer_en || '').trim();
+    // The English answer always uses Western digits, even when the question was asked in Bangla.
+    const ans = String(p.answer_en || '').trim().replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d));
     if (!ans) { errors.push(`${label}: status is answer but answer_en is empty.`); return; }
     const SILENT = /(does not|doesn't|do not|don't) (specify|say|state|mention|cover|list|set|give|provide|define|include|address|set out)|is silent|not specified|no (specific |separate )?(rule|period|requirement|limit|entitlement) is (given|set|stated)|(is|are) not (listed|mentioned|included|named|stated|specified)|sets no |gives no |(no|not any) [a-z -]{0,30} (is|are) (stated|set|given|specified)/i;
     if (SILENT.test(ans) && !/not covered by this policy|are not covered/i.test(ans)) {
